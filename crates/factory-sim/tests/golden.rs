@@ -31,5 +31,8 @@ fn agentic_template_matches_golden_snapshot() {
     }
     let expected: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(actual, expected, "rerun with UPDATE_GOLDEN=1 if the change is intended");
+    assert_eq!(
+        actual, expected,
+        "rerun with UPDATE_GOLDEN=1 if the change is intended"
+    );
 }

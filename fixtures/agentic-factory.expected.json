@@ -6,7 +6,7 @@
     },
     {
       "id": "code-review",
-      "moved": 625
+      "moved": 632
     },
     {
       "id": "review-ci",
@@ -14,80 +14,80 @@
     },
     {
       "id": "ci-deploy",
-      "moved": 382
+      "moved": 379
     },
     {
       "id": "review-code",
-      "moved": 121
+      "moved": 119
     },
     {
       "id": "ci-code",
-      "moved": 47
+      "moved": 50
     }
   ],
-  "events": 2947,
+  "events": 2949,
   "finished": true,
   "horizonMinutes": 7200.0,
   "modelVersion": 1,
   "stations": [
     {
-      "avgWaitMinutes": 0.20197916666666668,
+      "avgWaitMinutes": 0.19354166666666667,
       "busy": 0,
       "caught": 0,
       "completed": 480,
-      "cost": 6775.733333333334,
+      "cost": 6687.311111111111,
       "id": "spec",
       "queue": 0,
       "started": 480,
-      "utilization": 0.7058055555555556,
+      "utilization": 0.6965949074074074,
       "workers": 1
     },
     {
-      "avgWaitMinutes": 77.09655537890832,
+      "avgWaitMinutes": 70.99897798742138,
       "busy": 4,
       "caught": 0,
-      "completed": 625,
-      "cost": 1887.0,
+      "completed": 632,
+      "cost": 1908.0,
       "id": "code",
-      "queue": 19,
-      "started": 629,
-      "utilization": 0.9779045138888889,
+      "queue": 13,
+      "started": 636,
+      "utilization": 0.9940949074074074,
       "workers": 4
     },
     {
-      "avgWaitMinutes": 440.099577294686,
+      "avgWaitMinutes": 486.9637878787879,
       "busy": 1,
-      "caught": 122,
-      "completed": 551,
-      "cost": 11897.611111111102,
+      "caught": 120,
+      "completed": 549,
+      "cost": 11878.444444444447,
       "id": "review",
-      "queue": 73,
-      "started": 552,
-      "utilization": 0.9892060185185185,
+      "queue": 82,
+      "started": 550,
+      "utilization": 0.9889745370370371,
       "workers": 1
     },
     {
       "avgWaitMinutes": 0.0,
       "busy": 1,
-      "caught": 48,
+      "caught": 50,
       "completed": 429,
       "cost": 172.00000000000136,
       "id": "ci",
       "queue": 0,
       "started": 430,
-      "utilization": 0.11243672839506173,
+      "utilization": 0.11288888888888889,
       "workers": 6
     },
     {
-      "avgWaitMinutes": 0.04489528795811518,
+      "avgWaitMinutes": 0.07308707124010554,
       "busy": 0,
       "caught": 0,
-      "completed": 382,
-      "cost": 38.20000000000027,
+      "completed": 379,
+      "cost": 37.90000000000027,
       "id": "deploy",
       "queue": 0,
-      "started": 382,
-      "utilization": 0.15916666666666668,
+      "started": 379,
+      "utilization": 0.15791666666666668,
       "workers": 1
     }
   ],
@@ -95,17 +95,17 @@
   "totals": {
     "arrived": 480,
     "backlog": 0,
-    "cost": 20770.544444444455,
-    "costPerShipped": 54.37315299592789,
+    "cost": 20683.655555555568,
+    "costPerShipped": 54.57428906479041,
     "defectsCaught": 170,
-    "defectsEscaped": 55,
-    "defectsIntroduced": 254,
-    "leadTimeP50Minutes": 637.9333333333333,
-    "leadTimeP95Minutes": 1870.85,
-    "reworkCapHits": 2,
-    "reworks": 168,
-    "shipped": 382,
-    "throughputPerDay": 76.4,
-    "wip": 98
+    "defectsEscaped": 54,
+    "defectsIntroduced": 256,
+    "leadTimeP50Minutes": 727.45,
+    "leadTimeP95Minutes": 1945.5333333333333,
+    "reworkCapHits": 1,
+    "reworks": 169,
+    "shipped": 379,
+    "throughputPerDay": 75.8,
+    "wip": 101
   }
 }
