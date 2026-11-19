@@ -106,6 +106,11 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const scenario = doc.scenario;
+  // Positions live in React Flow's nodes; fold them in for saving and sharing.
+  const savedDoc = useMemo<FactoryDocument>(
+    () => ({ ...doc, layout: Object.fromEntries(nodes.map((n) => [n.id, n.position])) }),
+    [doc, nodes],
+  );
   const scenarioJson = useMemo(() => JSON.stringify(scenario), [scenario]);
 
   const update = useCallback((fn: (s: Scenario) => Scenario) => {
@@ -114,9 +119,12 @@ export function App() {
 
   const loadDocument = useCallback(
     (next: FactoryDocument) => {
+      // Derive everything first so a bad document throws before any state changes.
+      const nextNodes = toNodes(next);
+      const nextEdges = toEdges(next.scenario.edges);
       setDoc(next);
-      setNodes(toNodes(next));
-      setEdges(toEdges(next.scenario.edges));
+      setNodes(nextNodes);
+      setEdges(nextEdges);
       setSelection(null);
       setBaseline(null);
     },
@@ -126,15 +134,18 @@ export function App() {
   useEffect(() => {
     loadEngine().then(() => setEngineReady(true));
     if (location.hash.startsWith("#s=")) {
-      decodeShareHash(location.hash)
+      const hash = location.hash;
+      // Drop the fragment once read, so a reload shows later edits, not the original link.
+      history.replaceState(null, "", location.pathname + location.search);
+      decodeShareHash(hash)
         .then((shared) => shared && loadDocument(shared))
         .catch(() => setToast("That share link could not be read."));
     }
   }, [loadDocument]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(doc));
-  }, [doc]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedDoc));
+  }, [savedDoc]);
 
   // Keep React Flow's nodes and edges in step with the scenario.
   useEffect(() => {
@@ -228,11 +239,13 @@ export function App() {
   const addStation = (kind: StationKind) => {
     const station = newStation(kind, scenario.stations.map((s) => s.id));
     const maxX = Math.max(0, ...nodes.map((n) => n.position.x));
-    setDoc((d) => ({
-      ...d,
-      scenario: { ...d.scenario, stations: [...d.scenario.stations, station] },
-      layout: { ...d.layout, [station.id]: { x: maxX + 280, y: 320 } },
-    }));
+    // Select it on the canvas too, so Delete acts on what the inspector shows.
+    setNodes((prev) => [
+      ...prev.map((n) => ({ ...n, selected: false })),
+      { id: station.id, type: "station", position: { x: maxX + 280, y: 320 }, data: {}, selected: true },
+    ]);
+    setEdges((prev) => prev.map((e) => ({ ...e, selected: false })));
+    update((s) => ({ ...s, stations: [...s.stations, station] }));
     setSelection({ kind: "station", id: station.id });
   };
 
@@ -283,23 +296,22 @@ export function App() {
   };
 
   const share = async () => {
-    const hash = await encodeShareHash(doc);
+    const hash = await encodeShareHash(savedDoc);
     const url = `${location.origin}${location.pathname}${hash}`;
     if (url.length > MAX_SHARE_URL) {
       flash("This factory is too big for a link. Use Export instead.");
       return;
     }
-    history.replaceState(null, "", hash);
     try {
       await navigator.clipboard.writeText(url);
       flash("Share link copied.");
     } catch {
-      flash("Share link is in the address bar.");
+      prompt("Copy this share link:", url);
     }
   };
 
   const exportJson = () => {
-    const blob = new Blob([serializeDocument(doc)], { type: "application/json" });
+    const blob = new Blob([serializeDocument(savedDoc)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${doc.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "factory"}.factorysim.json`;
@@ -434,9 +446,6 @@ export function App() {
               onNodesDelete={(ns) => deleteStations(ns.map((n) => n.id))}
               onEdgesDelete={(es) => deleteEdges(es.map((e) => e.id))}
               onSelectionChange={onSelectionChange}
-              onNodeDragStop={(_, node) =>
-                setDoc((d) => ({ ...d, layout: { ...d.layout, [node.id]: node.position } }))
-              }
               isValidConnection={(c) => c.source !== c.target}
               fitView
               fitViewOptions={{ padding: 0.3 }}

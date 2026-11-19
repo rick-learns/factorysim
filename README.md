@@ -29,8 +29,8 @@ The bundled template (`fixtures/agentic-factory.json`) must produce exactly `fix
 - **Stations** have workers, a time per attempt (constant, or triangular min / likely / max), a cost per attempt and per busy hour, a chance to **introduce** a hidden defect, and a chance to **catch** one.
 - **Routes**: each station has at most one *pass* route (no pass route means the work ships) and at most one *rework* route, where caught defects go to be fixed. Rework cycles are fine; loops made only of pass routes are rejected.
 - **Arrivals** come at a fixed interval. An optional factory-wide **WIP limit** holds extra work in a backlog.
-- Defects are tracked separately from detection: a shipped item that still carries a hidden defect counts as an **escape**. After `maxRework` trips back, caught work ships anyway, and the app reports it.
-- **Metrics**: shipped, throughput, lead time p50/p95 (from arrival, including backlog), WIP, cost per shipped item including rework, escape rate, and per-station utilization, queue, and average wait. The bottleneck is the station at ≥85% utilization with the longest average wait.
+- Defects are tracked separately from detection: a shipped item that still carries a hidden defect counts as an **escape**. After `maxRework` trips back, caught work is waved through with its defect: it continues along pass routes, is not caught again, and is reported.
+- **Metrics**: shipped, throughput, lead time p50/p95 (from arrival, including backlog), WIP, cost per shipped item including rework, escape rate, and per-station utilization, queue, and average wait. The bottleneck is the station that is at least 85% busy and has the longest average wait, counting only stations where work actually waits more than a minute.
 
 Results are scenario estimates from one seeded run, not forecasts.
 
@@ -39,7 +39,8 @@ Results are scenario estimates from one seeded run, not forecasts.
 - Time is whole seconds; events are ordered by `(time, sequence)`.
 - Each station draws from its own PCG stream, seeded from the scenario seed and the station id, so editing one station does not reshuffle another station's random draws. That keeps before/after comparisons fair.
 - Triangular sampling uses only `+ - * /` and `sqrt`, which IEEE 754 rounds identically on native and wasm.
-- How the UI slices playback (speed, frame rate, pausing) never changes the outcome; a test checks this.
+- How the UI slices playback (speed, frame rate, pausing) never changes the outcome; tests check this, including events that land exactly on the horizon.
+- Runs stop at a fixed budget of 5 million events so an extreme model can't hang the tab; the app says when that happens.
 
 ## Why Rust for the engine and TypeScript for the UI
 

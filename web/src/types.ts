@@ -96,6 +96,8 @@ export interface Snapshot {
   timeMinutes: number;
   horizonMinutes: number;
   finished: boolean;
+  /** Stopped at the engine's event budget; results cover only `timeMinutes`. */
+  truncated: boolean;
   events: number;
   totals: Totals;
   stations: StationSnapshot[];

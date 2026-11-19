@@ -400,6 +400,9 @@ button.danger {
 .delta.bad {
   color: var(--red);
 }
+.summary .warn {
+  color: var(--red);
+}
 .summary {
   font-size: 13px;
   margin: 10px 0 6px;
