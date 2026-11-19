@@ -264,7 +264,11 @@ impl Sim {
         let target = to_seconds(minutes.max(0.0)).min(self.horizon);
         let mut count = 0;
         while count < max_events && !self.done {
-            if self.processed >= EVENT_BUDGET {
+            let more_due = self
+                .events
+                .peek()
+                .is_some_and(|Reverse(e)| e.time <= self.horizon);
+            if self.processed >= EVENT_BUDGET && more_due {
                 self.truncated = true;
                 self.done = true;
                 break;
