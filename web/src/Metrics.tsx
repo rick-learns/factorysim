@@ -154,7 +154,7 @@ export function Metrics(props: {
         {neck
           ? `Bottleneck: ${name(neck.id)} is ${Math.round(neck.utilization * 100)}% busy with ${neck.queue} waiting (avg wait ${formatMinutes(neck.avgWaitMinutes)}).`
           : "No bottleneck: no station is both near capacity and building a queue."}{" "}
-        {t.reworkCapHits > 0 && `${t.reworkCapHits} items hit the rework cap and moved on with a known defect.`}
+        {t.reworkCapHits > 0 && `${t.reworkCapHits} ${t.reworkCapHits === 1 ? "item" : "items"} hit the rework cap and moved on with a known defect.`}
         {snap.truncated && (
           <b className="warn">
             {" "}

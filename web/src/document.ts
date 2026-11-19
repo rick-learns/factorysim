@@ -1,5 +1,5 @@
 import agentic from "../../fixtures/agentic-factory.json";
-import type { FactoryDocument, Station, StationKind } from "./types";
+import type { Edge, FactoryDocument, Position, Scenario, Service, Station, StationKind } from "./types";
 
 export const TEMPLATE = agentic as FactoryDocument;
 
@@ -13,49 +13,94 @@ export function cloneDocument(doc: FactoryDocument): FactoryDocument {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isString = (v: unknown): v is string => typeof v === "string";
+const KINDS: readonly unknown[] = ["human", "agent", "automation"];
 
-function isStation(v: unknown): boolean {
-  if (!isObject(v) || !isObject(v.service)) return false;
-  const svc = v.service;
-  const serviceOk =
-    svc.type === "constant"
-      ? isNumber(svc.minutes)
-      : svc.type === "triangular" && isNumber(svc.min) && isNumber(svc.mode) && isNumber(svc.max);
-  return (
-    serviceOk &&
-    isString(v.id) &&
-    isString(v.name) &&
-    (v.kind === "human" || v.kind === "agent" || v.kind === "automation") &&
-    [v.workers, v.costPerTask, v.costPerHour, v.defectRate, v.detectionRate].every(isNumber)
+class InvalidDocument extends Error {}
+
+function fail(): never {
+  throw new InvalidDocument();
+}
+
+/** A finite number, or `fallback` when omitted (mirrors the engine's serde defaults). */
+function num(v: unknown, fallback?: number): number {
+  if (v === undefined && fallback !== undefined) return fallback;
+  return isNumber(v) ? v : fail();
+}
+
+function str(v: unknown): string {
+  return isString(v) ? v : fail();
+}
+
+function service(v: unknown): Service {
+  if (!isObject(v)) fail();
+  if (v.type === "constant") return { type: "constant", minutes: num(v.minutes) };
+  if (v.type === "triangular") return { type: "triangular", min: num(v.min), mode: num(v.mode), max: num(v.max) };
+  return fail();
+}
+
+function station(v: unknown): Station {
+  if (!isObject(v)) fail();
+  if (v.kind !== undefined && !KINDS.includes(v.kind)) fail();
+  return {
+    id: str(v.id),
+    name: str(v.name),
+    kind: (v.kind as StationKind | undefined) ?? "human",
+    workers: num(v.workers),
+    service: service(v.service),
+    costPerTask: num(v.costPerTask, 0),
+    costPerHour: num(v.costPerHour, 0),
+    defectRate: num(v.defectRate, 0),
+    detectionRate: num(v.detectionRate, 0),
+  };
+}
+
+function edge(v: unknown): Edge {
+  if (!isObject(v) || (v.kind !== "pass" && v.kind !== "rework")) fail();
+  return { id: str(v.id), from: str(v.from), to: str(v.to), kind: v.kind };
+}
+
+function scenario(v: unknown): Scenario {
+  if (!isObject(v) || !Array.isArray(v.stations) || !Array.isArray(v.edges)) fail();
+  if (v.wipLimit !== undefined && v.wipLimit !== null && !isNumber(v.wipLimit)) fail();
+  return {
+    modelVersion: num(v.modelVersion, 1),
+    seed: num(v.seed),
+    horizonMinutes: num(v.horizonMinutes),
+    arrivalIntervalMinutes: num(v.arrivalIntervalMinutes),
+    wipLimit: (v.wipLimit as number | null | undefined) ?? null,
+    maxRework: num(v.maxRework),
+    entry: str(v.entry),
+    stations: v.stations.map(station),
+    edges: v.edges.map(edge),
+  };
+}
+
+function layout(v: unknown): Record<string, Position> {
+  if (v === undefined) return {};
+  if (!isObject(v)) fail();
+  return Object.fromEntries(
+    Object.entries(v).map(([id, p]) => [id, isObject(p) ? { x: num(p.x), y: num(p.y) } : fail()]),
   );
 }
 
-function isLayout(v: unknown): boolean {
-  return isObject(v) && Object.values(v).every((p) => isObject(p) && isNumber(p.x) && isNumber(p.y));
-}
-
-/** Shape check for what the editor needs to render; the engine validates the rest. */
+/**
+ * Type-check every field the editor renders, filling in the engine's defaults
+ * for omitted optional fields. The engine validates values and structure.
+ */
 export function parseDocument(text: string): FactoryDocument {
-  const doc = JSON.parse(text) as Partial<FactoryDocument>;
-  const s = doc.scenario;
-  // Check every field the editor renders; the engine validates values and structure.
-  const ok =
-    doc.format === "factorysim/1" &&
-    isObject(s) &&
-    Array.isArray(s.stations) &&
-    Array.isArray(s.edges) &&
-    s.stations.every(isStation) &&
-    s.edges.every((e) => isObject(e) && isString(e.id) && isString(e.from) && isString(e.to)) &&
-    (doc.layout === undefined || isLayout(doc.layout));
-  if (!ok) {
-    throw new Error("Not a valid factorysim file (format \"factorysim/1\").");
+  const doc: unknown = JSON.parse(text);
+  try {
+    if (!isObject(doc) || doc.format !== "factorysim/1") fail();
+    return {
+      format: "factorysim/1",
+      name: isString(doc.name) ? doc.name : "Imported factory",
+      scenario: scenario(doc.scenario),
+      layout: layout(doc.layout),
+    };
+  } catch (e) {
+    if (e instanceof InvalidDocument) throw new Error("Not a valid factorysim file (format \"factorysim/1\").");
+    throw e;
   }
-  return {
-    format: "factorysim/1",
-    name: typeof doc.name === "string" ? doc.name : "Imported factory",
-    scenario: s,
-    layout: doc.layout ?? {},
-  };
 }
 
 export function serializeDocument(doc: FactoryDocument): string {
