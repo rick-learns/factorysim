@@ -142,11 +142,15 @@ fn caught_defects_loop_until_the_rework_cap_then_escape() {
     code.defect_rate = 1.0;
     let mut review = station("review", 1, constant(1.0));
     review.detection_rate = 1.0;
+    let mut ci = station("ci", 1, constant(1.0));
+    ci.detection_rate = 1.0;
     let mut s = scenario(
-        vec![code, review],
+        vec![code, review, ci],
         vec![
             edge("code", "review", EdgeKind::Pass),
             edge("review", "code", EdgeKind::Rework),
+            edge("review", "ci", EdgeKind::Pass),
+            edge("ci", "code", EdgeKind::Rework),
         ],
     );
     s.horizon_minutes = 1000.0;
@@ -156,7 +160,11 @@ fn caught_defects_loop_until_the_rework_cap_then_escape() {
     let t = &snap.totals;
     assert_eq!(t.shipped, 10);
     assert_eq!(t.reworks, 20);
+    // Once waved through at the cap, CI does not catch or count it again.
     assert_eq!(t.rework_cap_hits, 10);
+    assert_eq!(t.defects_caught, 30);
+    assert_eq!(snap.stations[2].caught, 0);
+    assert_eq!(t.wip, 0);
     assert_eq!(t.defects_escaped, 10);
     // code ran 3 times per item, review 3 times per item.
     assert_eq!(snap.stations[0].completed, 30);
@@ -171,8 +179,9 @@ fn costs_add_up() {
     let mut s = scenario(vec![a], vec![]);
     s.arrival_interval_minutes = 40.0;
     let snap = run(s).snapshot();
-    // Items start at 0, 40, 80, each costing 1 + 10 * 0.5.
-    assert!((snap.totals.cost - 18.0).abs() < 1e-9);
+    // Items start at 0, 40, 80: 3 flat charges plus 80 busy minutes, since
+    // the last attempt is cut off by the 100-minute horizon.
+    assert!((snap.totals.cost - (3.0 + 10.0 * 80.0 / 60.0)).abs() < 1e-9);
 }
 
 #[test]
@@ -228,4 +237,55 @@ fn editing_one_station_does_not_reshuffle_another_stations_luck() {
     // per-station random streams its run is untouched.
     assert_eq!(base.stations[0], changed.stations[0]);
     assert_ne!(base.stations[3], changed.stations[3]);
+}
+
+#[test]
+fn events_at_the_horizon_are_drained_however_playback_is_sliced() {
+    // Arrivals at 0 and 5; two completions land exactly on the 10-minute horizon.
+    let mut s = scenario(
+        vec![
+            station("a", 1, constant(5.0)),
+            station("b", 1, constant(5.0)),
+        ],
+        vec![edge("a", "b", EdgeKind::Pass)],
+    );
+    s.horizon_minutes = 10.0;
+    s.arrival_interval_minutes = 5.0;
+    let whole = run(s.clone());
+    let mut sliced = Sim::new(s).unwrap();
+    while !sliced.finished() {
+        sliced.advance_to(10.0, 1);
+    }
+    assert_eq!(whole.snapshot().totals.shipped, 1);
+    assert_eq!(whole.snapshot(), sliced.snapshot());
+    assert_eq!(whole.series(), sliced.series());
+}
+
+#[test]
+fn a_horizon_shorter_than_a_second_still_runs() {
+    let mut s = scenario(vec![station("a", 1, constant(0.0))], vec![]);
+    s.horizon_minutes = 0.001;
+    let snap = run(s).snapshot();
+    assert!(snap.finished);
+    assert_eq!(snap.totals.shipped, 1);
+}
+
+#[test]
+fn runaway_models_stop_at_the_event_budget() {
+    // Zero-time rework loop with a huge cap: effectively endless work.
+    let mut code = station("code", 1, constant(0.0));
+    code.defect_rate = 1.0;
+    let mut review = station("review", 1, constant(0.0));
+    review.detection_rate = 1.0;
+    let mut s = scenario(
+        vec![code, review],
+        vec![
+            edge("code", "review", EdgeKind::Pass),
+            edge("review", "code", EdgeKind::Rework),
+        ],
+    );
+    s.max_rework = u32::MAX;
+    let snap = run(s).snapshot();
+    assert!(snap.finished && snap.truncated);
+    assert_eq!(snap.events, factory_sim::EVENT_BUDGET);
 }

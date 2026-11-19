@@ -15,6 +15,10 @@ use crate::validate::{ValidationError, validate};
 /// Roughly how many chart samples a full run records.
 const SAMPLES_PER_RUN: u64 = 300;
 
+/// Hard stop so an extreme model cannot hang the browser. Deterministic, so a
+/// truncated run is still reproducible.
+pub const EVENT_BUDGET: u64 = 5_000_000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum EventKind {
     Arrival,
@@ -36,6 +40,8 @@ struct Item {
     /// Sent back for rework and not yet re-worked by the rework station.
     awaiting_fix: bool,
     reworks: u32,
+    /// Hit the rework cap; moves on with its defect and is not caught again.
+    waved_through: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -60,7 +66,18 @@ struct StationState {
     completed: u64,
     wait_seconds: u64,
     caught: u64,
-    cost: f64,
+    /// Flat per-attempt charges so far; hourly cost accrues from busy time.
+    task_cost: f64,
+}
+
+impl StationState {
+    fn busy_seconds_at(&self, now: u64) -> u64 {
+        self.busy_seconds + u64::from(self.busy) * (now - self.last_change)
+    }
+
+    fn cost_at(&self, now: u64) -> f64 {
+        self.task_cost + self.busy_seconds_at(now) as f64 / 3600.0 * self.cost_per_hour
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -74,7 +91,7 @@ pub struct Totals {
     pub defects_caught: u64,
     /// Shipped items that still had a hidden defect.
     pub defects_escaped: u64,
-    /// Times an item hit `max_rework` and shipped with a caught defect.
+    /// Items that hit `max_rework` and moved on with a known defect.
     pub rework_cap_hits: u64,
     pub reworks: u64,
     pub cost: f64,
@@ -114,6 +131,8 @@ pub struct Snapshot {
     pub time_minutes: f64,
     pub horizon_minutes: f64,
     pub finished: bool,
+    /// Stopped early at `EVENT_BUDGET`; results cover only `time_minutes`.
+    pub truncated: bool,
     pub events: u64,
     pub totals: Totals,
     pub stations: Vec<StationSnapshot>,
@@ -148,6 +167,9 @@ pub struct Sim {
     lead_times: Vec<u64>,
     totals: Totals,
     processed: u64,
+    /// All events through the horizon are handled (or the budget ran out).
+    done: bool,
+    truncated: bool,
     sample_every: u64,
     next_sample: u64,
     series: Series,
@@ -186,7 +208,7 @@ impl Sim {
                 completed: 0,
                 wait_seconds: 0,
                 caught: 0,
-                cost: 0.0,
+                task_cost: 0.0,
             })
             .collect();
         for (edge, e) in scenario.edges.iter().enumerate() {
@@ -218,6 +240,8 @@ impl Sim {
             lead_times: Vec::new(),
             totals: Totals::default(),
             processed: 0,
+            done: false,
+            truncated: false,
             sample_every,
             next_sample: 0,
             scenario,
@@ -231,7 +255,7 @@ impl Sim {
     }
 
     pub fn finished(&self) -> bool {
-        self.now >= self.horizon
+        self.done
     }
 
     /// Process events up to `minutes` (capped at the horizon), stopping early
@@ -239,7 +263,12 @@ impl Sim {
     pub fn advance_to(&mut self, minutes: f64, max_events: u64) -> u64 {
         let target = to_seconds(minutes.max(0.0)).min(self.horizon);
         let mut count = 0;
-        while count < max_events {
+        while count < max_events && !self.done {
+            if self.processed >= EVENT_BUDGET {
+                self.truncated = true;
+                self.done = true;
+                break;
+            }
             match self.events.peek() {
                 Some(Reverse(e)) if e.time <= target => {
                     let Reverse(e) = self.events.pop().expect("peeked");
@@ -247,20 +276,21 @@ impl Sim {
                     self.now = e.time;
                     self.handle(e.kind);
                     count += 1;
+                    self.processed += 1;
                 }
                 _ => {
                     self.record_samples_before(target + 1);
                     self.now = self.now.max(target);
+                    self.done = target == self.horizon;
                     break;
                 }
             }
         }
-        self.processed += count;
         count
     }
 
     pub fn run_to_end(&mut self) {
-        while !self.finished() {
+        while !self.done {
             self.advance_to(self.scenario.horizon_minutes, u64::MAX);
         }
     }
@@ -323,6 +353,7 @@ impl Sim {
             defect: false,
             awaiting_fix: false,
             reworks: 0,
+            waved_through: false,
         });
         self.totals.arrived += 1;
         let next = self.now + self.arrival_interval;
@@ -369,9 +400,7 @@ impl Sim {
             let st = &mut self.stations[station];
             st.started += 1;
             st.wait_seconds += self.now - self.items[item].enqueued;
-            let cost = st.cost_per_task + st.cost_per_hour * duration as f64 / 3600.0;
-            st.cost += cost;
-            self.totals.cost += cost;
+            st.task_cost += st.cost_per_task;
             self.schedule(self.now + duration, EventKind::Done { station, item });
         }
     }
@@ -391,7 +420,9 @@ impl Sim {
             let st = &self.stations[station];
             (st.detection_rate, st.defect_rate)
         };
-        let caught = self.chance(station, detection_rate) && self.items[item].defect;
+        let caught = self.chance(station, detection_rate)
+            && self.items[item].defect
+            && !self.items[item].waved_through;
         let introduced = self.chance(station, defect_rate);
 
         if caught {
@@ -408,6 +439,7 @@ impl Sim {
         } else {
             if caught {
                 self.totals.rework_cap_hits += 1;
+                self.items[item].waved_through = true;
             }
             if introduced && !self.items[item].defect {
                 self.items[item].defect = true;
@@ -446,7 +478,12 @@ impl Sim {
             s.wip.push(self.totals.wip);
             s.backlog.push(self.backlog.len() as u64);
             s.shipped.push(self.totals.shipped);
-            s.cost.push(self.totals.cost);
+            s.cost.push(
+                self.stations
+                    .iter()
+                    .map(|st| st.cost_at(self.next_sample))
+                    .sum(),
+            );
             for (q, st) in s.queues.iter_mut().zip(&self.stations) {
                 q.push(st.queue.len() as u64);
             }
@@ -461,6 +498,7 @@ impl Sim {
     pub fn snapshot(&self) -> Snapshot {
         let now = self.now.max(1);
         let mut totals = self.totals.clone();
+        totals.cost = self.stations.iter().map(|st| st.cost_at(self.now)).sum();
         totals.backlog = self.backlog.len() as u64;
         if totals.shipped > 0 {
             totals.cost_per_shipped = Some(totals.cost / totals.shipped as f64);
@@ -476,8 +514,7 @@ impl Sim {
             .iter()
             .zip(&self.scenario.stations)
             .map(|(st, def)| {
-                let busy_seconds =
-                    st.busy_seconds + u64::from(st.busy) * (self.now - st.last_change);
+                let busy_seconds = st.busy_seconds_at(self.now);
                 StationSnapshot {
                     id: def.id.clone(),
                     queue: st.queue.len() as u64,
@@ -489,7 +526,7 @@ impl Sim {
                     utilization: busy_seconds as f64 / (u64::from(st.workers) * now) as f64,
                     avg_wait_minutes: (st.started > 0)
                         .then(|| st.wait_seconds as f64 / st.started as f64 / 60.0),
-                    cost: st.cost,
+                    cost: st.cost_at(self.now),
                 }
             })
             .collect();
@@ -509,7 +546,8 @@ impl Sim {
             model_version: crate::MODEL_VERSION,
             time_minutes: self.now as f64 / 60.0,
             horizon_minutes: self.scenario.horizon_minutes,
-            finished: self.finished(),
+            finished: self.done,
+            truncated: self.truncated,
             events: self.processed,
             totals,
             stations,
