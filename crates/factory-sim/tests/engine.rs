@@ -217,3 +217,15 @@ fn scenario_json_round_trips() {
     let back: Scenario = serde_json::from_str(&json).unwrap();
     assert_eq!(s, back);
 }
+
+#[test]
+fn editing_one_station_does_not_reshuffle_another_stations_luck() {
+    let base = run(factory(5)).snapshot();
+    let mut changed = factory(5);
+    changed.stations[3].service = constant(9.0);
+    let changed = run(changed).snapshot();
+    // Spec sits upstream of CI with nothing routed back to it, so with
+    // per-station random streams its run is untouched.
+    assert_eq!(base.stations[0], changed.stations[0]);
+    assert_ne!(base.stations[3], changed.stations[3]);
+}

@@ -40,6 +40,9 @@ struct Item {
 
 #[derive(Clone, Debug)]
 struct StationState {
+    /// Each station draws from its own stream, so adding or editing one station
+    /// does not reshuffle the random draws of the others.
+    rng: Pcg64Mcg,
     workers: u32,
     service: Service,
     cost_per_task: f64,
@@ -132,7 +135,6 @@ pub struct Series {
 
 pub struct Sim {
     scenario: Scenario,
-    rng: Pcg64Mcg,
     events: BinaryHeap<Reverse<Event>>,
     seq: u64,
     now: u64,
@@ -167,6 +169,7 @@ impl Sim {
             .stations
             .iter()
             .map(|s| StationState {
+                rng: station_rng(scenario.seed, &s.id),
                 workers: s.workers,
                 service: s.service,
                 cost_per_task: s.cost_per_task,
@@ -198,7 +201,6 @@ impl Sim {
         let horizon = to_seconds(scenario.horizon_minutes);
         let sample_every = (horizon / SAMPLES_PER_RUN).max(60);
         let mut sim = Sim {
-            rng: Pcg64Mcg::new(u128::from(scenario.seed) | 1 << 64),
             events: BinaryHeap::new(),
             seq: 0,
             now: 0,
@@ -273,23 +275,23 @@ impl Sim {
     }
 
     /// Unit-interval sample with 53 bits of precision.
-    fn uniform(&mut self) -> f64 {
-        (self.rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
+    fn uniform(&mut self, station: usize) -> f64 {
+        (self.stations[station].rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
     }
 
-    fn chance(&mut self, p: f64) -> bool {
+    fn chance(&mut self, station: usize, p: f64) -> bool {
         // Always draw, so changing one rate does not shift every later sample.
-        let u = self.uniform();
+        let u = self.uniform(station);
         u < p
     }
 
-    fn service_seconds(&mut self, service: Service) -> u64 {
-        let minutes = match service {
+    fn service_seconds(&mut self, station: usize) -> u64 {
+        let minutes = match self.stations[station].service {
             Service::Constant { minutes } => minutes,
             Service::Triangular { min, mode, max } => {
                 // Inverse CDF. Uses only +, -, *, / and sqrt, which IEEE 754
                 // rounds identically on native and wasm targets.
-                let u = self.uniform();
+                let u = self.uniform(station);
                 let span = max - min;
                 if span <= 0.0 {
                     min
@@ -363,7 +365,7 @@ impl Sim {
             };
             let busy = self.stations[station].busy + 1;
             self.set_busy(station, busy);
-            let duration = self.service_seconds(self.stations[station].service);
+            let duration = self.service_seconds(station);
             let st = &mut self.stations[station];
             st.started += 1;
             st.wait_seconds += self.now - self.items[item].enqueued;
@@ -389,8 +391,8 @@ impl Sim {
             let st = &self.stations[station];
             (st.detection_rate, st.defect_rate)
         };
-        let caught = self.chance(detection_rate) && self.items[item].defect;
-        let introduced = self.chance(defect_rate);
+        let caught = self.chance(station, detection_rate) && self.items[item].defect;
+        let introduced = self.chance(station, defect_rate);
 
         if caught {
             self.totals.defects_caught += 1;
@@ -514,6 +516,15 @@ impl Sim {
             edges,
         }
     }
+}
+
+/// Seed a station's stream from the scenario seed and the station id (FNV-1a).
+fn station_rng(seed: u32, id: &str) -> Pcg64Mcg {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in id.bytes() {
+        h = (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
+    }
+    Pcg64Mcg::new((u128::from(seed) << 64 | u128::from(h)) | 1)
 }
 
 /// Nearest-rank percentile of sorted values, in minutes.
