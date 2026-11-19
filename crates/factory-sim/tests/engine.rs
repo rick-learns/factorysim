@@ -289,3 +289,15 @@ fn runaway_models_stop_at_the_event_budget() {
     assert!(snap.finished && snap.truncated);
     assert_eq!(snap.events, factory_sim::EVENT_BUDGET);
 }
+
+#[test]
+fn a_run_that_ends_exactly_at_the_budget_is_not_truncated() {
+    // One arrival per second and instant service: 2 events per item, so
+    // 2,500,000 items make exactly EVENT_BUDGET events.
+    let mut s = scenario(vec![station("a", 1, constant(0.0))], vec![]);
+    s.arrival_interval_minutes = 1.0 / 60.0;
+    s.horizon_minutes = (factory_sim::EVENT_BUDGET / 2) as f64 / 60.0;
+    let snap = run(s).snapshot();
+    assert_eq!(snap.events, factory_sim::EVENT_BUDGET);
+    assert!(snap.finished && !snap.truncated);
+}
