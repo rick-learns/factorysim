@@ -1,0 +1,17 @@
+[package]
+name = "factory-wasm"
+description = "wasm-bindgen adapter for factory-sim"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+factory-sim = { path = "../factory-sim" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+serde-wasm-bindgen = "0.6.5"
+# Pinned to match the installed wasm-bindgen CLI.
+wasm-bindgen = "=0.2.129"

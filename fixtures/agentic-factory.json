@@ -1,0 +1,45 @@
+{
+  "format": "factorysim/1",
+  "name": "Agentic software factory",
+  "scenario": {
+    "modelVersion": 1,
+    "seed": 42,
+    "horizonMinutes": 7200,
+    "arrivalIntervalMinutes": 15,
+    "wipLimit": null,
+    "maxRework": 4,
+    "entry": "spec",
+    "stations": [
+      { "id": "spec", "name": "Spec writer", "kind": "human", "workers": 1,
+        "service": { "type": "triangular", "min": 4, "mode": 8, "max": 20 },
+        "costPerTask": 0, "costPerHour": 80, "defectRate": 0.05, "detectionRate": 0 },
+      { "id": "code", "name": "Coding agents", "kind": "agent", "workers": 4,
+        "service": { "type": "triangular", "min": 15, "mode": 30, "max": 90 },
+        "costPerTask": 3, "costPerHour": 0, "defectRate": 0.35, "detectionRate": 0 },
+      { "id": "review", "name": "Code review", "kind": "human", "workers": 1,
+        "service": { "type": "triangular", "min": 4, "mode": 10, "max": 25 },
+        "costPerTask": 0, "costPerHour": 100, "defectRate": 0, "detectionRate": 0.6 },
+      { "id": "ci", "name": "CI pipeline", "kind": "automation", "workers": 6,
+        "service": { "type": "triangular", "min": 6, "mode": 8, "max": 20 },
+        "costPerTask": 0.4, "costPerHour": 0, "defectRate": 0, "detectionRate": 0.5 },
+      { "id": "deploy", "name": "Deploy", "kind": "automation", "workers": 1,
+        "service": { "type": "constant", "minutes": 3 },
+        "costPerTask": 0.1, "costPerHour": 0, "defectRate": 0.01, "detectionRate": 0 }
+    ],
+    "edges": [
+      { "id": "spec-code", "from": "spec", "to": "code", "kind": "pass" },
+      { "id": "code-review", "from": "code", "to": "review", "kind": "pass" },
+      { "id": "review-ci", "from": "review", "to": "ci", "kind": "pass" },
+      { "id": "ci-deploy", "from": "ci", "to": "deploy", "kind": "pass" },
+      { "id": "review-code", "from": "review", "to": "code", "kind": "rework" },
+      { "id": "ci-code", "from": "ci", "to": "code", "kind": "rework" }
+    ]
+  },
+  "layout": {
+    "spec": { "x": 0, "y": 120 },
+    "code": { "x": 280, "y": 120 },
+    "review": { "x": 560, "y": 120 },
+    "ci": { "x": 840, "y": 120 },
+    "deploy": { "x": 1120, "y": 120 }
+  }
+}
