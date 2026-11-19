@@ -59,7 +59,7 @@
       "busy": 1,
       "caught": 120,
       "completed": 549,
-      "cost": 11878.444444444447,
+      "cost": 11867.694444444445,
       "id": "review",
       "queue": 82,
       "started": 550,
@@ -95,8 +95,8 @@
   "totals": {
     "arrived": 480,
     "backlog": 0,
-    "cost": 20683.655555555568,
-    "costPerShipped": 54.57428906479041,
+    "cost": 20672.905555555557,
+    "costPerShipped": 54.5459249486954,
     "defectsCaught": 170,
     "defectsEscaped": 54,
     "defectsIntroduced": 256,
@@ -107,5 +107,6 @@
     "shipped": 379,
     "throughputPerDay": 75.8,
     "wip": 101
-  }
+  },
+  "truncated": false
 }
