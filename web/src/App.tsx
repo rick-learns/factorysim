@@ -388,7 +388,7 @@ export function App() {
         </div>
         <div className="group">
           <button
-            disabled={!snapshot?.finished}
+            disabled={!snapshot?.finished || snapshot.truncated}
             title="Finish a run, pin it, then change something and run again to compare."
             onClick={() => {
               if (!snapshot) return;
@@ -488,7 +488,8 @@ export function App() {
           scenario={scenario}
           snapshot={snapshot}
           series={series}
-          baseline={baseline?.totals ?? null}
+          // A partial run would make every delta misleading.
+          baseline={snapshot?.truncated ? null : (baseline?.totals ?? null)}
           bottleneck={bottleneck}
         />
       </footer>
