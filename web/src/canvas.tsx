@@ -133,7 +133,8 @@ export function FlowEdge(props: EdgeProps) {
         className={`flow-edge ${kind}${props.selected ? " selected" : ""}`}
         label={moved > 0 ? String(moved) : undefined}
         labelX={labelX}
-        labelY={labelY}
+        // Sit above the line so moving tokens and handles don't cover the count.
+        labelY={labelY - 12}
         labelBgPadding={[4, 2]}
         labelBgBorderRadius={4}
         labelStyle={{ fontSize: 11 }}

@@ -10,17 +10,27 @@ export function cloneDocument(doc: FactoryDocument): FactoryDocument {
   return structuredClone(doc);
 }
 
-/** Light shape check; the engine does the real validation. */
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+
+/** Shape check for what the editor needs to render; the engine validates the rest. */
 export function parseDocument(text: string): FactoryDocument {
   const doc = JSON.parse(text) as Partial<FactoryDocument>;
-  if (doc.format !== "factorysim/1" || !doc.scenario || !Array.isArray(doc.scenario.stations)) {
-    throw new Error("Not a factorysim file (expected format \"factorysim/1\").");
+  const s = doc.scenario;
+  const ok =
+    doc.format === "factorysim/1" &&
+    isObject(s) &&
+    Array.isArray(s.stations) &&
+    Array.isArray(s.edges) &&
+    s.stations.every((st) => isObject(st) && typeof st.id === "string" && isObject(st.service)) &&
+    s.edges.every((e) => isObject(e) && typeof e.id === "string" && typeof e.from === "string" && typeof e.to === "string");
+  if (!ok) {
+    throw new Error("Not a valid factorysim file (format \"factorysim/1\").");
   }
   return {
     format: "factorysim/1",
     name: typeof doc.name === "string" ? doc.name : "Imported factory",
-    scenario: doc.scenario,
-    layout: doc.layout ?? {},
+    scenario: s,
+    layout: isObject(doc.layout) ? doc.layout : {},
   };
 }
 

@@ -154,7 +154,14 @@ export function Metrics(props: {
         {neck
           ? `Bottleneck: ${name(neck.id)} is ${Math.round(neck.utilization * 100)}% busy with ${neck.queue} waiting (avg wait ${formatMinutes(neck.avgWaitMinutes)}).`
           : "No bottleneck: no station is both near capacity and building a queue."}{" "}
-        {t.reworkCapHits > 0 && `${t.reworkCapHits} items hit the rework cap and shipped with a known defect.`}
+        {t.reworkCapHits > 0 && `${t.reworkCapHits} items hit the rework cap and moved on with a known defect.`}
+        {snap.truncated && (
+          <b className="warn">
+            {" "}
+            Stopped early after {snap.events.toLocaleString()} events at {formatMinutes(snap.timeMinutes)}: this model is too
+            busy to simulate in full. Results cover only that time.
+          </b>
+        )}
       </p>
 
       {series && series.timeMinutes.length > 1 && (
