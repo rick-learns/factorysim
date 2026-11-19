@@ -258,7 +258,7 @@ function FactoryInspector(props: { scenario: Scenario; update: Update }) {
         value={scenario.maxRework}
         min={0}
         step={1}
-        hint="After this, caught work ships anyway."
+        hint="After this, caught work moves on with its defect."
         onChange={(v) => patch({ maxRework: Math.max(0, Math.round(v ?? 0)) })}
       />
       <NumberField

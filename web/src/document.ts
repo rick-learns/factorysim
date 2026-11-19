@@ -11,18 +11,42 @@ export function cloneDocument(doc: FactoryDocument): FactoryDocument {
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isString = (v: unknown): v is string => typeof v === "string";
+
+function isStation(v: unknown): boolean {
+  if (!isObject(v) || !isObject(v.service)) return false;
+  const svc = v.service;
+  const serviceOk =
+    svc.type === "constant"
+      ? isNumber(svc.minutes)
+      : svc.type === "triangular" && isNumber(svc.min) && isNumber(svc.mode) && isNumber(svc.max);
+  return (
+    serviceOk &&
+    isString(v.id) &&
+    isString(v.name) &&
+    (v.kind === "human" || v.kind === "agent" || v.kind === "automation") &&
+    [v.workers, v.costPerTask, v.costPerHour, v.defectRate, v.detectionRate].every(isNumber)
+  );
+}
+
+function isLayout(v: unknown): boolean {
+  return isObject(v) && Object.values(v).every((p) => isObject(p) && isNumber(p.x) && isNumber(p.y));
+}
 
 /** Shape check for what the editor needs to render; the engine validates the rest. */
 export function parseDocument(text: string): FactoryDocument {
   const doc = JSON.parse(text) as Partial<FactoryDocument>;
   const s = doc.scenario;
+  // Check every field the editor renders; the engine validates values and structure.
   const ok =
     doc.format === "factorysim/1" &&
     isObject(s) &&
     Array.isArray(s.stations) &&
     Array.isArray(s.edges) &&
-    s.stations.every((st) => isObject(st) && typeof st.id === "string" && isObject(st.service)) &&
-    s.edges.every((e) => isObject(e) && typeof e.id === "string" && typeof e.from === "string" && typeof e.to === "string");
+    s.stations.every(isStation) &&
+    s.edges.every((e) => isObject(e) && isString(e.id) && isString(e.from) && isString(e.to)) &&
+    (doc.layout === undefined || isLayout(doc.layout));
   if (!ok) {
     throw new Error("Not a valid factorysim file (format \"factorysim/1\").");
   }
@@ -30,7 +54,7 @@ export function parseDocument(text: string): FactoryDocument {
     format: "factorysim/1",
     name: typeof doc.name === "string" ? doc.name : "Imported factory",
     scenario: s,
-    layout: isObject(doc.layout) ? doc.layout : {},
+    layout: doc.layout ?? {},
   };
 }
 
